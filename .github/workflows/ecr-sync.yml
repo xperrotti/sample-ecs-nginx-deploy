@@ -2,6 +2,12 @@ name: Sync Docker Image to ECR
 
 on:
   workflow_dispatch:
+    inputs:
+      force_deploy:
+        description: "Force new ECS deployment after pushing the image"
+        required: false
+        type: boolean
+        default: false
   schedule:
     - cron: "0 6 * * 1" # Weekly on Monday at 6 AM UTC
 
@@ -57,6 +63,7 @@ jobs:
           docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$DATE_TAG
 
       - name: Force ECS New Deployment
+        if: inputs.force_deploy == true
         run: |
           echo "Forcing new ECS deployment to pick up the latest image..."
           aws ecs update-service \
