@@ -182,9 +182,12 @@ resource "aws_iam_role_policy" "github_actions" {
         Resource = [aws_dynamodb_table.terraform_locks.arn]
       },
       {
-        Sid      = "AssumeWorkloadRole"
-        Effect   = "Allow"
-        Action   = "sts:AssumeRole"
+        Sid    = "AssumeWorkloadRole"
+        Effect = "Allow"
+        Action = [
+          "sts:AssumeRole",
+          "sts:TagSession"
+        ]
         Resource = "arn:aws:iam::${var.workload_account_id}:role/${var.project_name}-github-actions-workload"
       },
       {

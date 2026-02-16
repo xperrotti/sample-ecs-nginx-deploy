@@ -48,7 +48,10 @@ resource "aws_iam_role" "github_actions_workload" {
         Principal = {
           AWS = "arn:aws:iam::${var.management_account_id}:role/${var.project_name}-github-actions"
         }
-        Action = "sts:AssumeRole"
+        Action = [
+          "sts:AssumeRole",
+          "sts:TagSession"
+        ]
       }
     ]
   })
