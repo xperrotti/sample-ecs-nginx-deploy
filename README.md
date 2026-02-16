@@ -1,1 +1,191 @@
-# sample-kubernetes-nginx-deploy
+# AWS ECS Fargate Infrastructure - nginxdemos/hello
+
+Terraform infrastructure to deploy the [nginxdemos/hello](https://hub.docker.com/r/nginxdemos/hello/) container on AWS ECS Fargate behind an Application Load Balancer with HTTPS, auto-scaling, and multi-account separation.
+
+## Architecture Overview
+
+![Architecture Diagram](diagrams/architecture.png)
+
+### Key Design Decisions
+
+- **ECS Fargate** over EKS — simpler for stateless containers, no cluster management overhead
+- **Multi-account** — Management account (Terraform state, OIDC, Route53 DNS) + Workload account (compute infrastructure)
+- **Cross-account Route53** — Dual Terraform provider: ACM cert + ALB in workload account, DNS records in management account
+- **GitHub Actions with OIDC** — no long-lived AWS credentials, keyless authentication
+- **3 NAT Gateways** (1 per AZ) — full high availability for outbound traffic
+- **HTTPS enforced** — ACM certificate with Route53 DNS validation, HTTP redirects to HTTPS
+- **Auto-scaling** — Min 2 tasks, Max 20, target 70% CPU utilization
+
+### Infrastructure Components
+
+| Component | Details |
+|---|---|
+| **Region** | us-east-2 (Ohio) |
+| **VPC** | 10.0.0.0/16 with public + private subnets across 3 AZs |
+| **ALB** | Internet-facing, HTTPS (TLS 1.3), HTTP→HTTPS redirect |
+| **ECS Fargate** | 256 CPU / 512 MiB per task, awsvpc network mode |
+| **ECR** | Private registry, image scanning on push |
+| **Auto-scaling** | Target tracking on CPU (70%), cooldown 60s out / 300s in |
+
+## Repository Structure
+
+```
+.
+├── bootstrap/
+│   ├── management/          # S3 state bucket, DynamoDB lock, OIDC provider, IAM role
+│   └── workload/            # Cross-account IAM role for CI/CD
+├── modules/
+│   ├── vpc/                 # VPC, subnets, IGW, NAT gateways, route tables
+│   ├── security-groups/     # ALB and ECS security groups
+│   ├── acm/                 # ACM certificate with Route53 DNS validation
+│   ├── alb/                 # ALB, listeners, target group, Route53 alias record
+│   ├── ecr/                 # ECR repository with lifecycle policy
+│   ├── iam/                 # ECS task execution role and task role
+│   └── ecs/                 # ECS cluster, service, task definition, auto-scaling
+├── environments/
+│   └── production/          # Root module composing all modules
+├── .github/workflows/
+│   ├── terraform-plan.yml   # PR → terraform plan + comment on PR
+│   ├── terraform-apply.yml  # Push to main → terraform apply
+│   └── ecr-sync.yml         # Mirror nginxdemos/hello to ECR
+└── diagrams/
+    └── architecture.py      # Architecture diagram (Python, mingrammer/diagrams)
+```
+
+## Prerequisites
+
+- **Two AWS accounts** in an AWS Organization (management + workload)
+- **A registered domain** with a Route53 hosted zone in the management account
+- **AWS CLI** configured with admin access to both accounts
+- **Terraform** >= 1.5.0
+- **GitHub repository** with Actions enabled
+- **Python 3.9+** and **Graphviz** (optional, for architecture diagram)
+
+## Quick Start
+
+### 1. Bootstrap the Management Account
+
+```bash
+cd bootstrap/management
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with your values
+terraform init
+terraform apply
+```
+
+This creates: S3 state bucket, DynamoDB lock table, GitHub OIDC provider, and GitHub Actions IAM role.
+
+Save the outputs — you'll need them for the next steps.
+
+### 2. Bootstrap the Workload Account
+
+```bash
+cd bootstrap/workload
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with the management account ID
+terraform init
+terraform apply
+```
+
+This creates the cross-account IAM role that GitHub Actions will assume.
+
+### 3. Configure GitHub Secrets
+
+Add the following secrets to your GitHub repository (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|---|---|
+| `AWS_ROLE_ARN` | Management account GitHub Actions role ARN (from step 1 output) |
+| `WORKLOAD_ROLE_ARN` | Workload account role ARN (from step 2 output) |
+| `TF_STATE_BUCKET` | S3 state bucket name (from step 1 output) |
+| `TF_LOCK_TABLE` | DynamoDB lock table name (from step 1 output) |
+| `DOMAIN_NAME` | Your application domain (e.g., `nginx-demo.ciphercoat.com`) |
+| `HOSTED_ZONE_NAME` | Your Route53 hosted zone (e.g., `ciphercoat.com`) |
+
+### 4. Deploy Infrastructure
+
+Push to `main` to trigger the Terraform Apply workflow:
+
+```bash
+git add -A
+git commit -m "Initial infrastructure"
+git push origin main
+```
+
+The GitHub Actions workflow will create all infrastructure in the workload account.
+
+### 5. Sync Container Image
+
+After the infrastructure is created, trigger the ECR sync workflow manually:
+
+1. Go to **Actions** → **Sync Docker Image to ECR** → **Run workflow**
+2. This pulls `nginxdemos/hello` from Docker Hub, pushes it to ECR, and forces an ECS deployment
+
+### 6. Verify
+
+Visit `https://nginx-demo.ciphercoat.com` — you should see the nginxdemos/hello page showing the server address and hostname. Refreshing should show different task IDs (HA across AZs).
+
+## Security
+
+### Network Security
+- ECS tasks run in **private subnets** with no public IP addresses
+- ECS security group accepts traffic **only from the ALB** security group on port 80
+- ALB is the only internet-facing component, accepting ports 80 (redirect) and 443 (HTTPS)
+- NAT gateways provide outbound-only internet access for image pulls and log shipping
+
+### Authentication & Authorization
+- **No long-lived credentials** — GitHub Actions authenticates via OIDC federation
+- OIDC trust is scoped to a specific GitHub repository
+- Cross-account access uses IAM role assumption with least-privilege policies
+- ECS task role is minimal (nginx doesn't require AWS API access)
+
+### Data Protection
+- HTTPS enforced with modern TLS policy (TLS 1.3)
+- Terraform state encrypted at rest (S3 SSE-AES256)
+- S3 state bucket has all public access blocked
+- ECR images scanned on push
+
+### Optional Enhancements
+- **AWS WAF** — can be attached to the ALB for rate limiting, geo-blocking, and OWASP protection
+- **VPC Flow Logs** — for network traffic auditing
+- **GuardDuty** — for threat detection
+
+## CI/CD Workflow
+
+| Event | Workflow | Action |
+|---|---|---|
+| Pull Request to `main` | `terraform-plan.yml` | Runs `terraform plan` and posts the output as a PR comment |
+| Push to `main` | `terraform-apply.yml` | Runs `terraform apply -auto-approve` |
+| Manual / Weekly schedule | `ecr-sync.yml` | Mirrors `nginxdemos/hello` from Docker Hub to ECR |
+
+## Architecture Diagram
+
+To regenerate the architecture diagram:
+
+```bash
+# Install dependencies
+brew install graphviz  # macOS
+cd diagrams
+pip install -r requirements.txt
+python architecture.py
+```
+
+This produces `diagrams/architecture.png`.
+
+## Destroying Infrastructure
+
+To tear down all infrastructure:
+
+```bash
+cd environments/production
+terraform destroy
+```
+
+Then destroy the bootstrap resources (in reverse order):
+
+```bash
+cd bootstrap/workload && terraform destroy
+cd bootstrap/management && terraform destroy
+```
+
+Note: The S3 state bucket and DynamoDB table have `prevent_destroy = true`. You'll need to remove this lifecycle rule or manually delete them.

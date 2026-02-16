@@ -1,0 +1,9 @@
+project_name        = "nginx-demo"
+region              = "us-east-2"
+github_org          = "xperrotti"
+github_repo         = "sample-ecs-nginx-deploy"
+workload_account_id = "868522398024"
+
+tags = {
+  Owner = "perrotti"
+}
