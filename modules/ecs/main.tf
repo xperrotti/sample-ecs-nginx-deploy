@@ -89,6 +89,7 @@ resource "time_sleep" "iam_propagation" {
 
 resource "aws_ecs_service" "main" {
   depends_on = [time_sleep.iam_propagation]
+
   name             = var.service_name
   cluster          = aws_ecs_cluster.main.id
   task_definition  = aws_ecs_task_definition.main.arn
