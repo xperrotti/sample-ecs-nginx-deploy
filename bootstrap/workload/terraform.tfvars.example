@@ -1,0 +1,7 @@
+project_name          = "nginx-demo"
+region                = "us-east-2"
+management_account_id = "495599737676"
+
+tags = {
+  Owner = "perrotti"
+}

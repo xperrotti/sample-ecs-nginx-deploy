@@ -1,0 +1,66 @@
+name: Sync Docker Image to ECR
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # Weekly on Monday at 6 AM UTC
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: "us-east-2"
+  SOURCE_IMAGE: "nginxdemos/hello:latest"
+  ECR_REPOSITORY: "nginx-demo-nginx-hello"
+  ECS_CLUSTER: "nginx-demo-cluster"
+  ECS_SERVICE: "nginx-demo-service"
+
+jobs:
+  sync:
+    name: Sync Image to ECR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS Credentials (OIDC → Management Account)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Assume Workload Role (Cross-Account)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.WORKLOAD_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-chaining: true
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Pull, Tag, and Push Image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          echo "Pulling image from Docker Hub..."
+          docker pull ${{ env.SOURCE_IMAGE }}
+
+          echo "Tagging and pushing as latest..."
+          docker tag ${{ env.SOURCE_IMAGE }} $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+          docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+
+          # Also tag with date for rollback capability
+          DATE_TAG=$(date +%Y%m%d-%H%M%S)
+          echo "Tagging and pushing as $DATE_TAG..."
+          docker tag ${{ env.SOURCE_IMAGE }} $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$DATE_TAG
+          docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$DATE_TAG
+
+      - name: Force ECS New Deployment
+        run: |
+          echo "Forcing new ECS deployment to pick up the latest image..."
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
