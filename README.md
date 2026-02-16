@@ -145,10 +145,25 @@ Visit `https://nginx-demo.ciphercoat.com` — you should see the nginxdemos/hell
 - S3 state bucket has all public access blocked
 - ECR images scanned on push
 
-### Optional Enhancements
-- **AWS WAF** — can be attached to the ALB for rate limiting, geo-blocking, and OWASP protection
-- **VPC Flow Logs** — for network traffic auditing
-- **GuardDuty** — for threat detection
+### Options for Securing Access to the Web Application
+
+The current deployment exposes the ALB publicly on ports 80/443. Depending on the access requirements, the following options can restrict who can reach the application:
+
+| Option | Use Case | Implementation |
+|---|---|---|
+| **AWS WAF** | Public-facing app needing L7 protection | Attach WAF WebACL to the ALB with managed rule groups (OWASP Core, Bot Control, IP reputation). Supports rate limiting, geo-blocking, and custom rules. |
+| **ALB + Cognito / OIDC** | Internal app with SSO | Add an `authenticate-oidc` or `authenticate-cognito` action to the ALB HTTPS listener. Users must sign in before reaching the app — no application code changes required. |
+| **IP Allowlisting** | Access restricted to known networks (offices, VPNs) | Add a WAF IP set rule or restrict the ALB security group ingress to specific CIDR ranges instead of `0.0.0.0/0`. |
+| **CloudFront + Signed URLs** | CDN with controlled access | Place CloudFront in front of the ALB with an origin access policy, restrict the ALB to CloudFront-only IPs, and use signed URLs or signed cookies for time-limited access. |
+| **AWS Private Link / Internal ALB** | No public exposure needed | Change the ALB scheme to `internal` and access it through VPN, Direct Connect, or VPC peering. Eliminates internet exposure entirely. |
+| **mTLS (Mutual TLS)** | Machine-to-machine or high-trust clients | Use ACM Private CA to issue client certificates and enable mutual TLS on the ALB. Only clients presenting a valid certificate can connect. |
+
+These options are composable — for example, WAF + Cognito provides both L7 protection and user authentication.
+
+### Observability & Threat Detection
+- **VPC Flow Logs** — enable on the VPC for network traffic auditing and anomaly detection
+- **GuardDuty** — AWS managed threat detection for account-level and network-level threats
+- **CloudWatch Container Insights** — already enabled on the ECS cluster for CPU/memory/network metrics
 
 ## CI/CD Workflow
 

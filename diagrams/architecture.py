@@ -15,7 +15,7 @@ Output:
 
 from diagrams import Cluster, Diagram, Edge
 from diagrams.aws.compute import ECS, Fargate
-from diagrams.aws.containers import ECR
+from diagrams.aws.compute import ECR
 from diagrams.aws.database import Dynamodb
 from diagrams.aws.management import Cloudwatch
 from diagrams.aws.network import ALB, InternetGateway, NATGateway, Route53
@@ -85,8 +85,8 @@ with Diagram(
     tasks >> Edge(style="dashed") >> logs
 
     # Outbound via NAT
-    tasks >> Edge(style="dotted", label="outbound") >> nat_gws
-    nat_gws >> igw
+    for task, nat in zip(tasks, nat_gws):
+        task >> Edge(style="dotted", label="outbound") >> nat >> igw
 
     # CI/CD flow
     github >> Edge(label="OIDC", style="dashed") >> oidc_role
