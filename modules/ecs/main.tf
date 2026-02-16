@@ -73,10 +73,22 @@ resource "aws_ecs_task_definition" "main" {
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
+# IAM PROPAGATION DELAY
+# Service-linked roles can take time to propagate in new AWS accounts
+# ---------------------------------------------------------------------------------------------------------------------
+
+resource "time_sleep" "iam_propagation" {
+  depends_on = [aws_ecs_cluster.main]
+
+  create_duration = "30s"
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
 # ECS SERVICE
 # ---------------------------------------------------------------------------------------------------------------------
 
 resource "aws_ecs_service" "main" {
+  depends_on = [time_sleep.iam_propagation]
   name             = var.service_name
   cluster          = aws_ecs_cluster.main.id
   task_definition  = aws_ecs_task_definition.main.arn

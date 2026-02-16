@@ -158,7 +158,8 @@ resource "aws_iam_role_policy" "workload_permissions" {
           "iam:PutRolePolicy",
           "iam:GetRolePolicy",
           "iam:DeleteRolePolicy",
-          "iam:ListRoleTags"
+          "iam:ListRoleTags",
+          "iam:CreateServiceLinkedRole"
         ]
         Resource = "*"
       },
