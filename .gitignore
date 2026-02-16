@@ -6,6 +6,7 @@
 .terraform.lock.hcl
 *.tfvars
 !*.tfvars.example
+!environments/production/terraform.tfvars
 crash.log
 override.tf
 override.tf.json
@@ -21,9 +22,6 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
-
-# Diagrams output
-diagrams/*.png
 
 # OS
 .DS_Store

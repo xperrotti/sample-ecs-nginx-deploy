@@ -1,0 +1,149 @@
+direction: down
+
+title: |md
+  # AWS ECS Fargate - nginxdemos/hello
+|
+
+# ---------------------------------------------------------------------------
+# External actors
+# ---------------------------------------------------------------------------
+users: Users {
+  shape: person
+}
+
+github: GitHub Actions\nCI/CD {
+  shape: circle
+}
+
+# ---------------------------------------------------------------------------
+# Management Account
+# ---------------------------------------------------------------------------
+management: Management Account {
+  style.fill: "#e8f4fd"
+  style.stroke: "#3498db"
+
+  dns: Route53 Hosted Zone {
+    shape: cloud
+  }
+
+  oidc_role: GitHub OIDC Role {
+    shape: hexagon
+  }
+
+  state: Terraform State {
+    style.fill: "#dce8f0"
+
+    s3: S3 Bucket {
+      shape: cylinder
+    }
+    dynamodb: DynamoDB Lock {
+      shape: cylinder
+    }
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Workload Account
+# ---------------------------------------------------------------------------
+workload: Workload Account {
+  style.fill: "#f0f8e8"
+  style.stroke: "#27ae60"
+
+  iam_role: Workload IAM Role {
+    shape: hexagon
+  }
+
+  ecr: ECR Registry {
+    shape: package
+  }
+
+  logs: CloudWatch Logs {
+    shape: page
+  }
+
+  vpc: VPC - 10.0.0.0/16 (us-east-2) {
+    style.fill: "#ffffff"
+    style.stroke: "#7f8c8d"
+
+    public: Public Subnets (3 AZs) {
+      style.fill: "#fef9e7"
+      style.stroke: "#f39c12"
+
+      alb: Application\nLoad Balancer {
+        shape: diamond
+      }
+      acm: ACM Certificate {
+        shape: page
+      }
+      igw: Internet Gateway {
+        shape: cloud
+      }
+      nat_a: NAT GW 2a {shape: queue}
+      nat_b: NAT GW 2b {shape: queue}
+      nat_c: NAT GW 2c {shape: queue}
+    }
+
+    private: Private Subnets (3 AZs) {
+      style.fill: "#fde8e8"
+      style.stroke: "#e74c3c"
+
+      ecs: ECS Cluster {
+        shape: package
+      }
+      task_a: Fargate Task 1\nus-east-2a {
+        shape: rectangle
+        style.fill: "#f5b041"
+        style.font-color: "#ffffff"
+      }
+      task_b: Fargate Task 2\nus-east-2b {
+        shape: rectangle
+        style.fill: "#f5b041"
+        style.font-color: "#ffffff"
+      }
+      task_c: Fargate Task N\nus-east-2c {
+        shape: rectangle
+        style.fill: "#f5b041"
+        style.font-color: "#ffffff"
+      }
+
+      ecs -- task_a
+      ecs -- task_b
+      ecs -- task_c
+    }
+  }
+}
+
+# ---------------------------------------------------------------------------
+# User traffic flow (solid lines)
+# ---------------------------------------------------------------------------
+users -> management.dns: HTTPS
+management.dns -> workload.vpc.public.alb: DNS → ALB
+workload.vpc.public.acm -- workload.vpc.public.alb: TLS
+workload.vpc.public.alb -> workload.vpc.private.task_a: port 80
+workload.vpc.public.alb -> workload.vpc.private.task_b: port 80
+workload.vpc.public.alb -> workload.vpc.private.task_c: port 80
+
+# ---------------------------------------------------------------------------
+# CI/CD flow (dashed lines)
+# ---------------------------------------------------------------------------
+github -> management.oidc_role: OIDC {style.stroke-dash: 5; style.stroke: "#3498db"}
+management.oidc_role -> workload.iam_role: assume role {style.stroke-dash: 5; style.stroke: "#3498db"}
+github -> management.state.s3: tf state {style.stroke-dash: 5; style.stroke: "#3498db"}
+
+# ---------------------------------------------------------------------------
+# ECS internals (dashed lines)
+# ---------------------------------------------------------------------------
+workload.ecr -> workload.vpc.private.ecs: image pull {style.stroke-dash: 5; style.stroke: "#e67e22"}
+workload.vpc.private.task_a -> workload.logs: logs {style.stroke-dash: 5; style.stroke: "#95a5a6"}
+workload.vpc.private.task_b -> workload.logs: {style.stroke-dash: 5; style.stroke: "#95a5a6"}
+workload.vpc.private.task_c -> workload.logs: {style.stroke-dash: 5; style.stroke: "#95a5a6"}
+
+# ---------------------------------------------------------------------------
+# Outbound via NAT (dotted lines)
+# ---------------------------------------------------------------------------
+workload.vpc.private.task_a -> workload.vpc.public.nat_a: {style.stroke-dash: 3; style.stroke: "#bdc3c7"}
+workload.vpc.private.task_b -> workload.vpc.public.nat_b: {style.stroke-dash: 3; style.stroke: "#bdc3c7"}
+workload.vpc.private.task_c -> workload.vpc.public.nat_c: {style.stroke-dash: 3; style.stroke: "#bdc3c7"}
+workload.vpc.public.nat_a -> workload.vpc.public.igw: {style.stroke-dash: 3; style.stroke: "#bdc3c7"}
+workload.vpc.public.nat_b -> workload.vpc.public.igw: {style.stroke-dash: 3; style.stroke: "#bdc3c7"}
+workload.vpc.public.nat_c -> workload.vpc.public.igw: {style.stroke-dash: 3; style.stroke: "#bdc3c7"}

@@ -50,7 +50,3 @@ jobs:
       - name: Terraform Apply
         working-directory: ${{ env.WORKING_DIR }}
         run: terraform apply -auto-approve
-        env:
-          TF_VAR_workload_role_arn: ${{ secrets.WORKLOAD_ROLE_ARN }}
-          TF_VAR_domain_name: ${{ secrets.DOMAIN_NAME }}
-          TF_VAR_hosted_zone_name: ${{ secrets.HOSTED_ZONE_NAME }}

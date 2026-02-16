@@ -60,10 +60,6 @@ jobs:
         working-directory: ${{ env.WORKING_DIR }}
         run: terraform plan -no-color -out=tfplan 2>&1 | tee plan_output.txt
         continue-on-error: true
-        env:
-          TF_VAR_workload_role_arn: ${{ secrets.WORKLOAD_ROLE_ARN }}
-          TF_VAR_domain_name: ${{ secrets.DOMAIN_NAME }}
-          TF_VAR_hosted_zone_name: ${{ secrets.HOSTED_ZONE_NAME }}
 
       - name: Post Plan to PR
         uses: actions/github-script@v7

@@ -32,13 +32,13 @@ with Diagram(
     graph_attr={"fontsize": "14", "pad": "0.5"},
 ):
     users = Users("Users")
-    dns = Route53("Route53\nDNS")
     github = Github("GitHub Actions\nCI/CD")
 
     # -------------------------------------------------------------------------
-    # Management Account
+    # Management Account (Route53 hosted zone lives here)
     # -------------------------------------------------------------------------
     with Cluster("Management Account"):
+        dns = Route53("Route53\nHosted Zone")
         oidc_role = IAMRole("GitHub OIDC\nRole")
         state_bucket = S3("Terraform\nState")
         lock_table = Dynamodb("State Lock")
@@ -53,21 +53,21 @@ with Diagram(
 
         with Cluster("VPC - 10.0.0.0/16 (us-east-2)"):
             with Cluster("Public Subnets (3 AZs)"):
-                igw = InternetGateway("Internet\nGateway")
-                cert = ACM("ACM\nCertificate")
                 alb = ALB("Application\nLoad Balancer")
+                cert = ACM("ACM\nCertificate")
+                igw = InternetGateway("Internet\nGateway")
                 nat_gws = [
-                    NATGateway("NAT GW\nus-east-2a"),
-                    NATGateway("NAT GW\nus-east-2b"),
-                    NATGateway("NAT GW\nus-east-2c"),
+                    NATGateway("NAT GW\n2a"),
+                    NATGateway("NAT GW\n2b"),
+                    NATGateway("NAT GW\n2c"),
                 ]
 
             with Cluster("Private Subnets (3 AZs)"):
                 ecs_cluster = ECS("ECS Cluster")
                 tasks = [
-                    Fargate("Task 1\nus-east-2a"),
-                    Fargate("Task 2\nus-east-2b"),
-                    Fargate("Task N\nus-east-2c"),
+                    Fargate("Task 1\n2a"),
+                    Fargate("Task 2\n2b"),
+                    Fargate("Task N\n2c"),
                 ]
 
     # -------------------------------------------------------------------------
@@ -75,7 +75,8 @@ with Diagram(
     # -------------------------------------------------------------------------
 
     # User traffic flow
-    users >> Edge(label="HTTPS") >> dns >> alb
+    users >> Edge(label="HTTPS") >> dns
+    dns >> alb
     cert - alb
     alb >> Edge(label="port 80") >> tasks
 
@@ -86,10 +87,9 @@ with Diagram(
 
     # Outbound via NAT
     for task, nat in zip(tasks, nat_gws):
-        task >> Edge(style="dotted", label="outbound") >> nat >> igw
+        task >> Edge(style="dotted") >> nat >> igw
 
     # CI/CD flow
     github >> Edge(label="OIDC", style="dashed") >> oidc_role
     oidc_role >> Edge(label="assume role", style="dashed") >> workload_role
     github >> Edge(style="dashed") >> state_bucket
-    github >> Edge(style="dashed") >> lock_table
